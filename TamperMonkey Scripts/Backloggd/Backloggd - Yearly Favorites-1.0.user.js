@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Backloggd - Yearly Favorites
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  Adds a Favorite Games of [CURRENT YEAR] Tab to every Backloggd Profile that Qualifies for it.
 // @author       CyanLimes
 // @match        https://backloggd.com/u/*
@@ -11,6 +11,8 @@
 // @grant        GM_xmlhttpRequest
 // @require      https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js
 // ==/UserScript==
+
+//Most Recent Update 1.1: Fixed a bug where entering a profile through the following or followers tab gives the wrong top 5.
 
 (function() {
     'use strict';
@@ -30,14 +32,14 @@
             if (abortController) abortController.abort();
             abortController = new AbortController();
 
-            const response = await $.ajax({
-                url: `/u/${username}/games/user-rating/type:played;release_year:${CURRENT_YEAR};category:${CATEGORIES}`,
-                dataType: 'html',
-                signal: abortController.signal
-            });
+            const response = await fetch(
+                `/u/${username}/games/user-rating/type:played;release_year:${CURRENT_YEAR};category:${CATEGORIES}`,
+                { signal: abortController.signal }
+            );
 
+            const responseText = await response.text();
             const parser = new DOMParser();
-            const doc = parser.parseFromString(response, 'text/html');
+            const doc = parser.parseFromString(responseText, 'text/html');
 
             return Array.from(doc.querySelectorAll('.col-cus-5')).map(game => {
                 const starContainer = game.querySelector('.star-ratings-static');
@@ -118,8 +120,9 @@
         if (isProcessing) return;
         isProcessing = true;
 
-        const username = window.location.pathname.split('/')[2];
-        if (!username) {
+        // Capture the current username from the URL at the start.
+        const currentUsername = window.location.pathname.split('/')[2];
+        if (!currentUsername) {
             isProcessing = false;
             return;
         }
@@ -129,18 +132,26 @@
             const existingSection = document.querySelector('#yearly-favorites-section');
             if (existingSection) existingSection.remove();
 
-            const games = await fetchYearlyGames(username);
+            const games = await fetchYearlyGames(currentUsername);
             if (games.length === 0) {
                 isProcessing = false;
                 return;
             }
 
             const insertSection = () => {
+                // Re-check the username before inserting.
+                const usernameAfterFetch = window.location.pathname.split('/')[2];
+                if (usernameAfterFetch !== currentUsername) {
+                    // The profile has changed since the request started; do not insert outdated data.
+                    isProcessing = false;
+                    return;
+                }
+
                 const mainContent = document.querySelector('.col.pl-md-4');
                 const profileStats = document.querySelector('#profile-stats');
 
                 if (mainContent && profileStats) {
-                    const yearlySection = createYearlySection(games, username);
+                    const yearlySection = createYearlySection(games, currentUsername);
                     yearlySection.id = 'yearly-favorites-section';
                     mainContent.insertBefore(yearlySection, profileStats);
                     isProcessing = false;
