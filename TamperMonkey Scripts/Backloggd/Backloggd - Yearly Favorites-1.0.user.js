@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Backloggd - Yearly Favorites
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.2
 // @description  Adds a Favorite Games of [CURRENT YEAR] Tab to every Backloggd Profile that Qualifies for it.
 // @author       CyanLimes
 // @match        https://backloggd.com/u/*
@@ -12,7 +12,7 @@
 // @require      https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js
 // ==/UserScript==
 
-//Most Recent Update 1.1: Fixed a bug where entering a profile through the following or followers tab gives the wrong top 5.
+//Most Recent Update 1.2: Fixed a bug where clicking any navigation link on the profile and returning duplicates the top 5.
 
 (function() {
     'use strict';
@@ -168,6 +168,7 @@
         }
     }
 
+
     // Enhanced navigation detection
     const observeProfileChanges = () => {
         // 1. Observe the main content container directly
@@ -186,8 +187,10 @@
 
         // 3. Special handler for navbar profile clicks
         document.addEventListener('click', (e) => {
-            if (e.target.closest('.nav-profile-link')) {
-                setTimeout(main, 500);
+            const navLink = e.target.closest('.btn, .btn-small, .btn-general, .nav-link, .game-card-link, .secondary-link, .open-review-link, .comments-link');
+            if (navLink) {
+                isProcessing = false;
+                document.querySelectorAll('#yearly-favorites-section').forEach(el => el.remove());
             }
         });
 
