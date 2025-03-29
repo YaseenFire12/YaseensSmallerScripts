@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Backloggd - Yearly Favorites
 // @namespace    http://tampermonkey.net/
-// @version      1.2
+// @version      1.3
 // @description  Adds a Favorite Games of [CURRENT YEAR] Tab to every Backloggd Profile that Qualifies for it.
 // @author       CyanLimes
 // @match        https://backloggd.com/u/*
@@ -9,10 +9,9 @@
 // @match        https://backloggd.com/*
 // @match        https://www.backloggd.com/*
 // @grant        GM_xmlhttpRequest
-// @require      https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js
 // ==/UserScript==
 
-//Most Recent Update 1.2: Fixed a bug where clicking any navigation link on the profile and returning duplicates the top 5.
+//Most Recent Update 1.3: Optmization and Reload Changes
 
 (function() {
     'use strict';
@@ -22,7 +21,7 @@
     let isProcessing = false;
 
     const style = document.createElement('style');
-    style.textContext = `
+    style.textContent = `
     #yearly-favorites-section {display: none !important;}
     #yearly-favorites-section:last-of-type {display: block !important;}`;
 
@@ -37,7 +36,10 @@
                 { signal: abortController.signal }
             );
 
+            if (!response.ok) return [];
             const responseText = await response.text();
+            if (!responseText.includes('col-cus-5')) return [];
+
             const parser = new DOMParser();
             const doc = parser.parseFromString(responseText, 'text/html');
 
@@ -57,6 +59,18 @@
             return [];
         }
     }
+
+    function generateStars(ratingWidth) {
+    return ratingWidth !== '0%' ? `
+        <div class="row star-ratings-static" style="position: absolute; bottom: -35px; right: 30px;">
+            <div class="stars-top" style="width: ${ratingWidth}">
+                ${'<span class="star"></span>'.repeat(5)}
+            </div>
+            <div class="stars-bottom">
+                ${'<span class="star"></span>'.repeat(5)}
+            </div>
+        </div>
+    ` : '';}
 
     function createYearlySection(games, username) {
         const section = document.createElement('div');
@@ -88,24 +102,7 @@
                                         <div class="overlay"></div>
                                     </div>
                                     <div class="game-text-centered">${game.name}</div>
-                                    ${game.ratingWidth !== '0%' ? `
-                                    <div class="row star-ratings-static" style="position: absolute; bottom: -35px; right: 30px;">
-                                        <div class="stars-top" style="width: ${game.ratingWidth}">
-                                            <span class="star"></span>
-                                            <span class="star"></span>
-                                            <span class="star"></span>
-                                            <span class="star"></span>
-                                            <span class="star"></span>
-                                        </div>
-                                        <div class="stars-bottom">
-                                            <span class="star"></span>
-                                            <span class="star"></span>
-                                            <span class="star"></span>
-                                            <span class="star"></span>
-                                            <span class="star"></span>
-                                        </div>
-                                    </div>
-                                    ` : ''}
+                                    ${generateStars(game.ratingWidth)}
                                 </div>
                             </a>
                         </div>
@@ -168,55 +165,71 @@
         }
     }
 
+      let debounceTimer;
+        function debouncedMain() {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(main, 100); // Adjust delay as needed
+        }
+
 
     // Enhanced navigation detection
     const observeProfileChanges = () => {
-        // 1. Observe the main content container directly
-        const contentObserver = new MutationObserver((mutations) => {
-            if (document.querySelector('#profile-stats')) {
+        // 1. Create a primary observer to detect container creation
+        const containerObserver = new MutationObserver((mutations) => {
+            const mainContainer = document.querySelector('.container');
+            if (mainContainer) {
+                // Stop observing once container exists
+                containerObserver.disconnect();
+
+                // 2. Set up content observer on the container
+                const contentObserver = new MutationObserver((mutations) => {
+                    if (document.querySelector('#profile-stats')) {
+                        main();
+                    }
+                });
+
+                contentObserver.observe(mainContainer, {
+                    childList: true,
+                    subtree: true
+                });
+
+                // 3. Immediate check for existing content
                 main();
             }
         });
 
-        // 2. Monitor both AJAX navigation and history changes
+        // Start observing the document body
+        containerObserver.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+
+        // 4. Preserve history and click handlers
         const pushState = history.pushState;
         history.pushState = function() {
             pushState.apply(history, arguments);
-            setTimeout(main, 300);
+            debouncedMain();
         };
 
-        // 3. Special handler for navbar profile clicks
         document.addEventListener('click', (e) => {
-            const navLink = e.target.closest('.btn, .btn-small, .btn-general, .nav-link, .game-card-link, .secondary-link, .open-review-link, .comments-link');
+            const navLink = e.target.closest('.btn, .nav-link');
             if (navLink) {
-                isProcessing = false;
                 document.querySelectorAll('#yearly-favorites-section').forEach(el => el.remove());
             }
         });
 
-        // Start observing
-        const mainContainer = document.querySelector('.container');
-        if (mainContainer) {
-            contentObserver.observe(mainContainer, {
-                childList: true,
-                subtree: true,
-                attributes: false,
-                characterData: false
-            });
-        }
-
-        window.addEventListener('popstate', main);
-        window.addEventListener('replacestate', main);
+        window.addEventListener('popstate', debouncedMain);
+        window.addEventListener('replacestate', debouncedMain);
     };
-
     // Initialization
     if (document.readyState === 'complete') {
         observeProfileChanges();
-        main();
+        // Add initial check with small delay
+        setTimeout(main, 100);
     } else {
         window.addEventListener('load', () => {
             observeProfileChanges();
-            main();
+            setTimeout(main, 100);
         });
     }
 })();
