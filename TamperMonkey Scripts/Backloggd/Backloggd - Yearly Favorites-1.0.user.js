@@ -2,7 +2,7 @@
 // @name         Backloggd - Yearly Favorites
 // @namespace    http://tampermonkey.net/
 // @version      1.0
-// @description  Isolated user context for profile data
+// @description  Adds a Favorite Games of [CURRENT YEAR] Tab to every Backloggd Profile that Qualifies for it.
 // @author       CyanLimes
 // @match        https://backloggd.com/u/*
 // @match        https://www.backloggd.com/u/*
